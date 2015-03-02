@@ -1,0 +1,113 @@
+object Form1: TForm1
+  Left = 259
+  Height = 440
+  Top = 156
+  Width = 731
+  Caption = 'Form1'
+  ClientHeight = 440
+  ClientWidth = 731
+  LCLVersion = '1.3'
+  object Label2: TLabel
+    Left = 8
+    Height = 15
+    Top = 12
+    Width = 77
+    Caption = 'gpgme library:'
+    ParentColor = False
+  end
+  object Label3: TLabel
+    Left = 8
+    Height = 15
+    Top = 44
+    Width = 56
+    Caption = 'key to use:'
+    ParentColor = False
+  end
+  object GpgmeLibEdt: TEdit
+    Left = 96
+    Height = 23
+    Top = 8
+    Width = 544
+    TabOrder = 0
+    Text = 'C:\Program Files\GNU\GnuPG\libgpgme-11.dll'
+  end
+  object GpgKeyEdt: TEdit
+    Left = 96
+    Height = 23
+    Top = 40
+    Width = 544
+    TabOrder = 1
+    Text = 'testperson@example.org'
+  end
+  object LogM: TMemo
+    Left = 96
+    Height = 234
+    Top = 176
+    Width = 543
+    Anchors = [akTop, akLeft, akRight, akBottom]
+    Lines.Strings = (
+      'LogM'
+    )
+    ScrollBars = ssAutoBoth
+    TabOrder = 2
+  end
+  object listKeysBtn: TButton
+    Left = 72
+    Height = 25
+    Top = 128
+    Width = 192
+    Caption = 'list available GPG keys'
+    OnClick = listKeysBtnClick
+    TabOrder = 3
+  end
+  object encryptWithHeadersBtn: TButton
+    Left = 272
+    Height = 25
+    Top = 128
+    Width = 192
+    Caption = 'encrypt using header translation'
+    OnClick = encryptWithHeadersBtnClick
+    TabOrder = 4
+  end
+  object encryptWithObjectBtn: TButton
+    Left = 471
+    Height = 25
+    Top = 128
+    Width = 193
+    Caption = 'encrypt using gpgme object'
+    OnClick = encryptWithObjectBtnClick
+    TabOrder = 5
+  end
+  object BrowseBtn: TButton
+    Left = 648
+    Height = 25
+    Top = 6
+    Width = 75
+    Caption = 'browse'
+    OnClick = BrowseBtnClick
+    TabOrder = 6
+  end
+  object ClearTextEdt: TEdit
+    Left = 96
+    Height = 23
+    Top = 72
+    Width = 543
+    TabOrder = 7
+    Text = 'Hello World!'
+  end
+  object Label1: TLabel
+    Left = 8
+    Height = 15
+    Top = 76
+    Width = 79
+    Caption = 'text to encrypt:'
+    ParentColor = False
+  end
+  object GpgmeLibOD: TOpenDialog
+    DefaultExt = '.*.dll'
+    FileName = 'libgpgme-11.dll'
+    Filter = 'gpgme lib|libgpgme-11.dll'
+    left = 672
+    top = 32
+  end
+end
