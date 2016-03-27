@@ -1,6 +1,6 @@
 unit gpgme_h;
-
 {$mode delphi}{$H+}
+
 
 interface
 
@@ -8,7 +8,7 @@ uses
   Classes, SysUtils, DynLibs{$ifdef fpc}{$ifdef unix}, unixtype{$ifend}{$ifend};
 
 type
-  GpgmeError = class(Exception);
+  EGpgmeError = class(Exception);
 
   //GPGME consts
 const
@@ -50,9 +50,13 @@ const
   GPGME_KEYLIST_MODE_SIG_NOTATIONS = 8;
   GPGME_KEYLIST_MODE_EPHEMERAL = 128;
   GPGME_KEYLIST_MODE_VALIDATE = 256;
+  GPGME_PINENTRY_MODE_CANCEL = 2;
+  GPGME_PINENTRY_MODE_LOOPBACK = 4;
 
   //error codes:
   GPG_ERR_EOF = 16383;
+  GPG_ERR_CANCELED = 99;
+  GPG_ERR_NO_ERROR = 0;
 
 type
   // compatibility declarations
@@ -84,6 +88,7 @@ type
   end;
   Tgpgme_error = Tgpg_error;
 
+
   //other redefinitions:
   Tgpgme_ssize_t = ssize_t;
 
@@ -106,16 +111,45 @@ type
   Tgpgme_data_read_cb_t = function(handle: Pointer; buffer: Pointer; size: size_t): Tgpgme_ssize_t; cdecl;
   Tgpgme_data_write_cb_t = function(handle: Pointer; buffer: Pointer; size: size_t): Tgpgme_ssize_t; cdecl;
   Tgpgme_data_seek_cb_t = function(handle: Pointer; offset: off_t; whence: Integer): off_t; cdecl;
+  Tgpgme_passphrase_cb_t  = function(hook:pointer;uid_hint:PAnsiChar;passphrase_info:PAnsiChar;prev_was_bad:integer;fd:integer):Tgpgme_error;cdecl;
   Tgpgme_data_release_cb_t = procedure(handle: pointer); cdecl;
 
   //Records:
+  Pgpgme_data_cbs = ^Tgpgme_data_cbs;
   Tgpgme_data_cbs = {$ifndef cpu64}packed{$ifend cpu64} record
     read: Tgpgme_data_read_cb_t;
     write: Tgpgme_data_write_cb_t;
     seek: Tgpgme_data_seek_cb_t;
     release: Tgpgme_data_release_cb_t;
   end;
-  Pgpgme_data_cbs = ^Tgpgme_data_cbs;
+
+  Pgpgme_import_status_t = ^Tgpgme_import_status_t;
+  Tgpgme_import_status_t = {$ifndef cpu64}packed{$ifend cpu64} record
+    next:Pgpgme_import_status_t;
+    fpr:PAnsiChar;
+    result:Tgpgme_error;
+    status:integer;
+   end;
+
+
+  Pgpgme_import_result_t = ^Tgpgme_import_result_t;
+    Tgpgme_import_result_t = {$ifndef cpu64}packed{$ifend cpu64} record
+    considered:integer;
+    no_user_id:integer;
+    imported:integer;
+    imported_rsa:integer;
+    unchanged:integer;
+    new_user_ids:integer;
+    new_sub_keys:integer;
+    new_signatures:integer;
+    new_revocations:integer;
+    secret_read:integer;
+    secret_imported:integer;
+    secret_unchaged:integer;
+    not_imported:integer;
+    imports:Pgpgme_import_status_t;
+  end;
+
 
   Pgpgme_engine_info = ^Tgpgme_engine_info;
   Tgpgme_engine_info = {$ifndef cpu64}packed{$ifend cpu64} record
@@ -251,6 +285,7 @@ type
 
   PPgpgme_key = ^Pgpgme_key;
   Pgpgme_key = ^Tgpgme_key;
+
   Tgpgme_key = {$ifndef cpu64}packed{$ifend cpu64} record
     _refs: Cardinal;
 {
@@ -280,7 +315,16 @@ type
   end;
   TDynPgpgmeKeyArray = array of Pgpgme_key;
 
+
   //GPGME functions
+  Tgpgme_op_import_result = function(ctx:Pgpgme_ctx_t):pgpgme_import_result_t;cdecl;
+  Tgpgme_op_import = function (ctx: Pgpgme_ctx_t;keydata:Tgpgme_data_t):Tgpgme_error;cdecl;
+  Tgpgme_set_pinentry_mode = function(ctx: Pgpgme_ctx_t;mode:integer): Tgpgme_error ;cdecl;
+  Tgpgme_set_global_flag = function(name:PAnsiChar;value:PAnsiChar):integer;cdecl;
+  {gpgme_io_writen is needed for passphrase callback funciton, windows api writefile is supposed to work, but does not.
+   You must use versions of gpgme >= 1.4}
+  Tgpgme_io_writen = function(fd:integer; buffer:PAnsiChar; count:integer):integer;cdecl;
+  Tgpgme_set_passphrase_cb = procedure(ctx: Pgpgme_ctx_t;passfunc:Tgpgme_passphrase_cb_t;hook_value:pointer);cdecl;
   Tgpgme_check_version = function(required_version: PAnsiChar): PAnsiChar; cdecl;
   Tgpgme_get_protocol_name = function(protocol: Tgpgme_protocol_t):PAnsiChar; cdecl;
   Tgpgme_set_locale = function(ctx: Tgpgme_ctx_t; category: Integer; value: PAnsiChar): Tgpgme_error ;cdecl;
@@ -303,10 +347,11 @@ type
   Tgpgme_set_engine_info = function(proto: Tgpgme_protocol_t; const file_name: PAnsiChar; const home_dir: PAnsiChar): Tgpgme_error; cdecl;
   Tgpgme_get_key = function(ctx: Tgpgme_ctx_t; const fpr: PAnsiChar; r_key: PPgpgme_key; secret: LongBool): Tgpgme_error; cdecl;
   Tgpgme_op_encrypt = function(ctx: Tgpgme_ctx_t; recp: PPgpgme_key; flags: Tgpgme_encrypt_flags_t; plain: Tgpgme_data_t; cipher: Tgpgme_data_t): Tgpgme_error; cdecl;
+  Tgpgme_op_decrypt = function(ctx: Tgpgme_ctx_t;cipher: Tgpgme_data_t; plain: Tgpgme_data_t): Tgpgme_error; cdecl;
   Tgpgme_strerror = function(err: Tgpgme_error): PAnsiChar; cdecl;
   Tgpgme_data_new_from_file = function(dh: Pgpgme_data_t; const filename: PAnsiChar; copy: LongBool): Tgpgme_error; cdecl;
   Tgpgme_data_new = function(dh: Pgpgme_data_t): Tgpgme_error; cdecl;
-  Tgpgme_data_new_from_mem = function(dh: Pgpgme_data_t; const buffer: PChar; size: size_t; copy: LongBool): Tgpgme_error; cdecl;
+  Tgpgme_data_new_from_mem = function(dh: Pgpgme_data_t; const buffer: PAnsiChar; size: size_t; copy: LongBool): Tgpgme_error; cdecl;
   Tgpgme_data_new_from_cbs = function(dh: Pgpgme_data_t; cbs: Pgpgme_data_cbs; handle: Pointer): Tgpgme_error; cdecl;
   Tgpgme_data_release = procedure(dh: Tgpgme_data_t); cdecl;
   Tgpgme_key_release = procedure(key: Pgpgme_key); cdecl;
@@ -328,14 +373,21 @@ type
   end;
 
 var
+  gpgme_op_import_result: Tgpgme_op_import_result;
+  gpgme_ctx_get_engine_info: Tgpgme_ctx_get_engine_info;
+  gpgme_op_import:Tgpgme_op_import;
+  gpgme_set_pinentry_mode:Tgpgme_set_pinentry_mode;
   gpgme_check_version: Tgpgme_check_version;
+  gpgme_io_writen:Tgpgme_io_writen;
+  gpgme_set_global_flag:Tgpgme_set_global_flag;
+  gpgme_set_passphrase_cb:Tgpgme_set_passphrase_cb;
   gpgme_get_protocol_name: Tgpgme_get_protocol_name;
   gpgme_set_locale: TGpgme_set_locale;
   gpgme_new: Tgpgme_new;
   gpgme_release: Tgpgme_release;
   gpgme_set_protocol: Tgpgme_set_protocol;
   gpgme_get_protocol: Tgpgme_get_protocol;
-  gpgme_ctx_get_engine_info: Tgpgme_ctx_get_engine_info;
+
   gpgme_ctx_set_engine_info: Tgpgme_ctx_set_engine_info;
   gpgme_set_armor: Tgpgme_set_armor;
   gpgme_get_armor: Tgpgme_get_armor;
@@ -351,6 +403,7 @@ var
   gpgme_set_engine_info: Tgpgme_set_engine_info;
   gpgme_get_key: Tgpgme_get_key;
   gpgme_op_encrypt: Tgpgme_op_encrypt;
+  gpgme_op_decrypt: Tgpgme_op_decrypt;
   gpgme_strerror: Tgpgme_strerror;
   gpgme_data_new_from_file: Tgpgme_data_new_from_file;
   gpgme_data_new: Tgpgme_data_new;
@@ -359,6 +412,7 @@ var
   gpgme_key_release: Tgpgme_key_release;
 
 procedure LoadGpgme(LibraryName: String);
+procedure UnloadGpgme();
 procedure CheckGpgmeError(Error: Tgpgme_error);
 
 implementation
@@ -370,7 +424,7 @@ var
 function InitFunction(Name: String): Pointer;
 begin
   Result := GetProcAddress(LibHandle, Name);
-  if not Assigned(Result) then raise GpgmeError.Create('could not find function ' + Name + ' in GPGME library.');
+  if not Assigned(Result) then raise EGpgmeError.Create('could not find function ' + Name + ' in GPGME library.');
 end;
 
 procedure init_gpgme;
@@ -388,22 +442,24 @@ var
   setlocale: TSetLocale;
   LibcHandle: TLibHandle;
   Version: PAnsiChar;
+
 begin
   {$IFDEF WINDOWS}
   LibcHandle := LoadLibrary('msvcrt.dll');
   {$ELSE}
   LibcHandle := LoadLibrary('libc.so.6');
   {$IFEND}
-  if LibHandle = 0 then raise GpgmeError.Create('could not load C library');
+  if LibHandle = 0 then raise EGpgmeError.Create('could not load C library');
   try
     setlocale := GetProcAddress(LibcHandle, 'setlocale');
-    if not assigned(setlocale) then raise GpgmeError.Create('could not import the function setlocale from the C library');
+    if not assigned(setlocale) then raise EGpgmeError.Create('could not import the function setlocale from the C library');
     { Initialize the locale environment.  }
     Version := gpgme_check_version(nil);
-    if not Assigned(Version) then raise GpgmeError.Create('could not initialize GPGME');
+    if not Assigned(Version) then raise EGpgmeError.Create('could not initialize GPGME');
     LibVersion := Version;
     gpgme_set_locale(nil, LC_CTYPE, setlocale (LC_CTYPE, nil));
     gpgme_set_locale(nil, LC_MESSAGES, setlocale (LC_MESSAGES, nil));
+
   finally
     FreeLibrary(LibcHandle);
   end;
@@ -415,22 +471,27 @@ var
   CurrentDir: String;
   LibDir: String;
 begin
-  if LibHandle <> 0 then Exit;
-
-  CurrentDir := GetCurrentDir;
-  LibDir := ExtractFileDir(LibraryName);
-
-  if LibDir <> '' then ChDir(LibDir);
-  try
-    LibHandle := LoadLibrary(LibraryName);
-  finally
-    ChDir(CurrentDir);
-  end;
-
-  if LibHandle = 0 then raise GpgmeError.Create('Could not load GPGME library ' + LibraryName);
+     if LibHandle <> 0 then
+        Exit;
+     CurrentDir := GetCurrentDir;
+     LibDir := ExtractFileDir(LibraryName);
+     if LibDir <> '' then
+        ChDir(LibDir);
+     try
+        LibHandle := LoadLibrary(LibraryName);
+     finally
+            ChDir(CurrentDir);
+     end;
+  if LibHandle = 0 then
+     raise EGpgmeError.Create('Could not load GPGME library ' + LibraryName);
+  gpgme_op_import_result:= InitFunction('gpgme_op_import_result');
+  gpgme_op_import:= InitFunction('gpgme_op_import');
+  gpgme_set_pinentry_mode := InitFunction('gpgme_set_pinentry_mode');
   gpgme_check_version := InitFunction('gpgme_check_version');
   gpgme_set_locale := InitFunction('gpgme_set_locale');
   init_gpgme;
+  gpgme_io_writen:= InitFunction('gpgme_io_writen');
+  gpgme_set_passphrase_cb:= InitFunction('gpgme_set_passphrase_cb');
   gpgme_get_protocol_name := InitFunction('gpgme_get_protocol_name');
   gpgme_new := InitFunction('gpgme_new');
   gpgme_release := InitFunction('gpgme_release');
@@ -452,18 +513,26 @@ begin
   gpgme_set_engine_info := InitFunction('gpgme_set_engine_info');
   gpgme_get_key := InitFunction('gpgme_get_key');
   gpgme_op_encrypt := InitFunction('gpgme_op_encrypt');
+  gpgme_op_decrypt:= initFunction('gpgme_op_decrypt');
   gpgme_strerror := InitFunction('gpgme_strerror');
   gpgme_data_new_from_file := InitFunction('gpgme_data_new_from_file');
   gpgme_data_new := InitFunction('gpgme_data_new');
   gpgme_data_new_from_mem := InitFunction('gpgme_data_new_from_mem');
   gpgme_data_new_from_cbs := InitFunction('gpgme_data_new_from_cbs');
   gpgme_key_release := InitFunction('gpgme_key_release');
+  gpgme_set_global_flag   := InitFunction('gpgme_set_global_flag');
+end;
+
+procedure UnloadGpgme();
+begin
+    UnloadLibrary(LibHandle);
+    LibHandle:=0;
 end;
 
 procedure CheckGpgmeError(Error: Tgpgme_error);
 begin
   if Error.error <> 0 then begin
-    raise GpgmeError.Create(gpgme_strerror(Error));
+    raise EGpgmeError.Create(gpgme_strerror(Error));
   end;
 end;
 
@@ -561,7 +630,8 @@ end;
 
 destructor TGpgmeStreamAdapter.Destroy;
 begin
-  if Assigned(FDH) then gpgme_data_release(FDH);
+  if Assigned(FDH) then
+     gpgme_data_release(FDH);
   inherited;
 end;
 
